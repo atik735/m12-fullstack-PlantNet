@@ -1,18 +1,25 @@
-const UserDataRow = () => {
+import { useState } from "react";
+import UpadateUserRoleModal from "../../Modal/UpdateUserRoleModal";
+
+const UserDataRow = ({user, refetch}) => {
+
+  const {email, role, status} = user
+    let [isOpen, setIsOpen] = useState(false);
+
   return (
     <tr>
       <td className='px-5 py-5 border-b border-gray-200 bg-white text-sm'>
-        <p className='text-gray-900 whitespace-no-wrap'>abc@gmail.com</p>
+        <p className='text-gray-900 whitespace-no-wrap'>{email}</p>
       </td>
       <td className='px-5 py-5 border-b border-gray-200 bg-white text-sm'>
-        <p className='text-gray-900 whitespace-no-wrap'>Customer</p>
+        <p className='text-gray-900 whitespace-no-wrap'>{role}</p>
       </td>
       <td className='px-5 py-5 border-b border-gray-200 bg-white text-sm'>
-        <p className='text-red-500 whitespace-no-wrap'>Unavailable</p>
+        <p className='text-red-500 whitespace-no-wrap'>{status?status:'unavailable'}</p>
       </td>
 
       <td className='px-5 py-5 border-b border-gray-200 bg-white text-sm'>
-        <span className='relative cursor-pointer inline-block px-3 py-1 font-semibold text-green-900 leading-tight'>
+        <span onClick={() => setIsOpen(true)} className='relative cursor-pointer inline-block px-3 py-1 font-semibold text-green-900 leading-tight'>
           <span
             aria-hidden='true'
             className='absolute inset-0 bg-green-200 opacity-50 rounded-full'
@@ -20,7 +27,13 @@ const UserDataRow = () => {
           <span className='relative'>Update Role</span>
         </span>
         {/* Modal */}
-        {/* <UpdateUserModal /> */}
+      <UpadateUserRoleModal 
+      role={role} 
+      isOpen={isOpen}
+      setIsOpen={setIsOpen}
+      userEmail={email}
+      refetch={refetch}
+       />
       </td>
     </tr>
   )

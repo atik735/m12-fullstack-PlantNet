@@ -4,6 +4,7 @@ const cors = require('cors')
 const cookieParser = require('cookie-parser')
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
 const jwt = require('jsonwebtoken')
+const stripe = require('stripe')(process.env.STRIPE_SK_KEY)
 
 const port = process.env.PORT || 3000
 const app = express()
@@ -20,7 +21,7 @@ app.use(cookieParser())
 
 const verifyToken = async (req, res, next) => {
   const token = req.cookies?.token
-
+  
   if (!token) {
     return res.status(401).send({ message: 'unauthorized access' })
   }
@@ -43,6 +44,10 @@ const client = new MongoClient(process.env.MONGODB_URI, {
   },
 })
 async function run() {
+  const db = client.db('plantnetDB')
+  const plantsCollection = db.collection('plants')
+  const ordersCollection = db.collection('orders')
+  const usersCollection = db.collection('users')
   try {
     // Generate jwt token
     app.post('/jwt', async (req, res) => {
@@ -72,6 +77,146 @@ async function run() {
         res.status(500).send(err)
       }
     })
+
+    //add a plant in db
+app.post('/add-plant', async (req, res) => {
+  const plant = req.body;
+  const result = await plantsCollection.insertOne(plant);
+  res.send(result);
+});
+
+// get all plants data from db
+
+app.get('/plants', async(req,res) =>{
+  const result = await plantsCollection.find().toArray()
+  res.send(result)
+})
+// get a single plant data from db
+
+app.get('/plant/:id', async(req,res) =>{
+  const id = req.params.id
+  const result = await plantsCollection.findOne({
+    _id: new ObjectId(id),
+  }
+  )
+  res.send(result)
+})
+
+//create payment intent for order
+app.post('/create-payment-intent', async (req, res) =>{
+
+  const {plantId, quantity} = req.body
+  const plant = await plantsCollection.findOne({ _id: new ObjectId(plantId)})
+  if(!plant) return res.send(404).send({message: 'Plant Not Found'})
+    const totalPrice = quantity * plant?.price * 100
+  //stripe
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: totalPrice,
+    currency: 'usd',
+    automatic_payment_methods: {
+      enabled: true,
+    },
+  })
+
+  res.send({clientSecret: paymentIntent.client_secret})
+
+})
+
+//save or update a users info in db
+app.post('/user', async(req, res)=>{
+  const userData = req.body
+  userData.role = 'customer'
+  userData.created_at = new Date().toISOString()
+  userData.last_loggedIn = new Date().toISOString()
+  const query = {
+    email: userData?.email,
+  }
+  const alreadyExists = await usersCollection.findOne(query)
+
+  if (!!alreadyExists) {
+    const result = await usersCollection.updateOne(query,{
+      $set: { last_loggedIn: new Date().toISOString() }
+    })
+    return res.send(result)
+  }
+  // return console.log(userData)
+  const result = await usersCollection.insertOne(userData)
+  res.send(result)
+})
+
+
+//get a users role
+
+app.get('/user/role/:email', async(req,res)=>{
+
+  const email = req.params.email;
+  const result = await usersCollection.findOne({email})
+  if (!result) return res.status(404).send({message: 'User Not Found'})
+  res.send({role: result?.role})
+})
+
+app.post('/order', async(req, res) =>{
+
+  const orderData = req.body
+  const result = await ordersCollection.insertOne(orderData)
+  res.send(result)
+})
+
+//update plant quantity (inrease/decrease)
+app.patch('/quantity-update/:id', async(req,res) =>{
+
+  const id = req.params.id;
+  const {quantityToUpdate, status} = req.body;
+  const filter ={_id: new ObjectId(id)}
+  const updateDoc = {
+    $inc: {
+      quantity: status === 'increase'? quantityToUpdate : -quantityToUpdate  //increase or dectrease quantity
+    },
+  }
+
+  const result = await plantsCollection.updateOne(filter, updateDoc)
+  res.send(result)
+})
+
+//get all users for admin
+
+app.get('/all-users', verifyToken, async (req,res) =>{
+  console.log(req.user)
+  const filter = {email: {
+    $ne: req?.user?.email
+  },
+}
+  const result = await usersCollection.find(filter).toArray()
+  res.send(result)
+})
+
+//update a user's role
+app.patch('/users/role/update/:email', verifyToken, async (req,res) =>{
+  const email = req.params.email
+  const {role} = req.body
+  const filter = {email: email}
+  const updateDoc = {
+    $set: {
+      role, 
+      status: 'verified',
+    }
+  }
+  const result = await usersCollection.updateOne(filter, updateDoc)
+  res.send(result)
+})
+
+//become seller request
+app.patch('/become-seller/:email', verifyToken, async (req,res) =>{
+  const email = req.params.email
+  const filter = {email: email}
+  const updateDoc = {
+    $set: {
+      status: 'requested',
+    }
+  }
+  const result = await usersCollection.updateOne(filter, updateDoc)
+  res.send(result)
+})
 
     // Send a ping to confirm a successful connection
     await client.db('admin').command({ ping: 1 })
